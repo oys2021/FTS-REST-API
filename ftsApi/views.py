@@ -28,3 +28,7 @@ class IncomeList(ListAPIView):
 class ExpenseList(ListAPIView):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
+
+# views.py
+
+

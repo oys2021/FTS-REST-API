@@ -13,6 +13,10 @@ from django.contrib.auth import authenticate,login
 import random
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+# from braces.views import CsrfExemptMixin
+
 # Create your views here.
 
 def sendEmail(subject, message, from_email, recipient):
@@ -24,9 +28,14 @@ def sendEmail(subject, message, from_email, recipient):
         return False
 
 # Create your views here.
+
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+
+@method_decorator(csrf_exempt, name='dispatch')
 class CreateUserView(CreateAPIView):
     permission_classes = [AllowAny]
-    serializer_class = UserSerializer
+    serializer_class = UserSerializer  # Assuming you have defined UserSerializer
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -48,6 +57,7 @@ class CreateUserView(CreateAPIView):
             user = authenticate(request, username=username, password=request.data['password'])
             if user:
                 login(request, user)
+                
 
                 # Generate token
                 token, created = Token.objects.get_or_create(user=user)
@@ -60,32 +70,39 @@ class CreateUserView(CreateAPIView):
 
                 # Send OTP to user
                 send_mail('OTP', 'Your OTP is ' + otp, 'IncomeChecker.com', [email], fail_silently=True)
-
-                token_data = {"token": token.key}
-                return Response(
-                    {**serializer.validated_data, **token_data},
-                    status=status.HTTP_201_CREATED,
-                )
+                
+                if user.is_authenticated:
+                    token_data = {"token": token.key}
+                    return Response({'token': token.key, 'message': 'User created and logged in'}, status=status.HTTP_201_CREATED)
+                    
+                else:
+                    return Response({'error': 'Authentication failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
             else:
-                return Response({'error': 'Authentication failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)     
-                   
+                return Response({'error': 'Authentication failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+                               
 class VerifyUser(APIView):
     permission_classes = [IsAuthenticated]
-    def post(self,request):
-        data=dict(request.data)
-        user=request.user
-        regular_user=UserProfile.objects.get(user=user)
+    def post(self, request):
+        data = dict(request.data)
+        user = request.user if request.user.is_authenticated else None
+
+        if user:
+            regular_user = UserProfile.objects.get(user=user)
         
-        if regular_user.otp == data['otp']:
-            regular_user.verified=True
-            regular_user.save()
-            
-            token, Created = Token.objects.get_or_create(user=user)
-            return Response({'token': token.key, 'message': 'Verification successful.'}, status=status.HTTP_200_OK)
+            if regular_user.otp == data['otp']:
+                regular_user.verified = True
+                regular_user.save()
+                
+                # Assuming you want to generate a new token after verification
+                token, created = Token.objects.get_or_create(user=user)
+
+                return Response({'token': token.key, 'message': 'Verification successful.'}, status=status.HTTP_200_OK)
+            else:
+                return Response({'error': 'Invalid OTP.'}, status=status.HTTP_400_BAD_REQUEST)
         else:
-            return Response({'error': 'Invalid OTP.'}, status=status.HTTP_400_BAD_REQUEST)
-            
+            return Response({'error': 'User not authenticated.'}, status=status.HTTP_401_UNAUTHORIZED)            
 
 
 class UserLoginAPIView(APIView):
@@ -139,3 +156,8 @@ class ResetPasswordView(APIView):
         
         else:
             return Response({"error": "data is incorrect"},status=status.HTTP_400_BAD_REQUEST)
+        
+from django.http import JsonResponse
+
+def get_csrf_token(request):
+    return JsonResponse({'csrf_token': request.csrf_token})

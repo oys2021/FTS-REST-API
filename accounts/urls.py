@@ -1,6 +1,8 @@
 from django.urls import path
+from django.views.decorators.csrf import csrf_exempt
 # from .views import UserProfileViewSet
 from .views import *
+from .views import get_csrf_token
 app_name = 'accounts'
 
 urlpatterns = [
@@ -11,4 +13,5 @@ urlpatterns = [
     path('login', UserLoginAPIView.as_view(), name="login"),
     path('verify', VerifyUser.as_view(), name="verify"),
     path('otp', OTPAPIView.as_view(), name="otp"),
+    path('get_csrf_token/', get_csrf_token, name='get_csrf_token'),
 ]
